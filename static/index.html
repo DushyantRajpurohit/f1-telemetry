@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>F1 Telemetry Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/4.1.1/plotly-basic.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d12; --panel: #12151d; --panel-2: #181c26; --border: #222838;
+    --text: #e8eaf0; --muted: #8a91a3; --accent: #e10600; --good: #3ddc84; --bad: #ff5c5c;
+    --font: "Titillium Web", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 var(--font); }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between;
+    padding: 16px 24px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: .02em; display: flex; align-items: center; gap: 10px; }
+  .brand::before { content: ""; width: 6px; height: 22px; background: var(--accent); transform: skewX(-15deg); }
+  .controls, .drivers { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  select, button {
+    font: inherit; font-size: 15px; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; min-width: 90px;
+  }
+  select:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #event { min-width: 220px; }
+  nav { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  nav button {
+    background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 0;
+    padding: 10px 14px; color: var(--muted); font-weight: 600; cursor: pointer;
+  }
+  nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  #status { min-height: 28px; padding: 6px 24px; font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  #status.error { color: var(--bad); }
+  #status.busy::before {
+    content: ""; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: transparent;
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  main { padding: 0 24px 40px; max-width: 1500px; margin: 0 auto; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between; margin-bottom: 16px; }
+  .vs { color: var(--muted); padding-bottom: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; flex: 1; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+  .kpi .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .kpi .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 13px; color: var(--muted); }
+  .good { color: var(--good); } .bad { color: var(--bad); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; min-width: 0; }
+  .card h2 { margin: 0; font-size: 16px; }
+  .sub { margin: 2px 0 8px; color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+  .grid.sim { grid-template-columns: 320px 1fr; }
+  .grid > .card { margin-bottom: 0; }
+  .grid + .card, .grid + div { margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: 8px; }
+  th, td { padding: 9px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+  td.best { font-weight: 700; }
+  .slider { margin: 14px 0; }
+  .slider .top { display: flex; justify-content: space-between; font-size: 14px; }
+  .slider .top span:last-child { font-variant-numeric: tabular-nums; }
+  .slider small { color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  #reset { width: 100%; cursor: pointer; margin-top: 6px; }
+  .chart { width: 100%; height: 420px; }
+  #tel { height: 680px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 900px) {
+    header, nav, #status, main { padding-left: 16px; padding-right: 16px; }
+    .grid, .grid.sim { grid-template-columns: 1fr; }
+    #tel { height: 560px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">F1 Telemetry Explorer</div>
+  <div class="controls">
+    <label>Season <select id="year"></select></label>
+    <label>Grand Prix <select id="event"></select></label>
+    <label>Session
+      <select id="kind">
+        <option value="Q">Qualifying</option><option value="R">Race</option>
+        <option value="S">Sprint</option><option value="SQ">Sprint Qualifying</option>
+        <option value="FP1">Practice 1</option><option value="FP2">Practice 2</option><option value="FP3">Practice 3</option>
+      </select>
+    </label>
+  </div>
+</header>
+<nav role="tablist">
+  <button role="tab" data-tab="compare" aria-selected="true">Compare drivers</button>
+  <button role="tab" data-tab="sim" aria-selected="false">Lap simulator</button>
+</nav>
+<div id="status" role="status" aria-live="polite"></div>
+
+<main>
+  <section id="compare">
+    <div class="row">
+      <div class="drivers">
+        <label>Driver A <select id="a"></select></label>
+        <span class="vs">vs</span>
+        <label>Driver B <select id="b"></select></label>
+      </div>
+    </div>
+    <div class="kpis" id="cmpKpis"></div>
+    <div class="card">
+      <h2>Fastest lap telemetry</h2>
+      <p class="sub" id="telSub"></p>
+      <div id="tel" class="chart"></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Track dominance</h2>
+        <p class="sub">Lap split into 25 minisectors, each coloured by the driver with the higher average speed.</p>
+        <div id="map" class="chart"></div>
+      </div>
+      <div class="card">
+        <h2>Lap stats</h2>
+        <table id="stats"></table>
+      </div>
+    </div>
+    <div id="race" hidden>
+      <div class="card"><h2>Race pace</h2><p class="sub">Lap times, excluding in/out laps and safety-car laps.</p><div id="pace" class="chart"></div></div>
+      <div class="card"><h2>Tyre strategy</h2><p class="sub">Every driver, in finishing order.</p><div id="tyres" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section id="sim" hidden>
+    <div class="row">
+      <div class="drivers"><label>Driver <select id="simDriver"></select></label></div>
+    </div>
+    <div class="kpis" id="simKpis"></div>
+    <div class="grid sim">
+      <div class="card">
+        <h2>Car setup</h2>
+        <p class="sub">Starts at the car that best reproduces this lap. Change a value to see its lap-time cost.</p>
+        <div id="sliders"></div>
+        <button id="reset" type="button">Reset to fitted car</button>
+      </div>
+      <div class="card">
+        <h2>Speed trace</h2>
+        <p class="sub">Point-mass model: grip circle, downforce, drag and power. No gears, tyre temperature or racing line.</p>
+        <div id="simSpeed" class="chart"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Where the driver beats the model</h2>
+      <p class="sub">Real speed minus fitted-model speed. Blue: the car is faster than a point mass predicts (e.g. kerb use, transient grip); red: slower.</p>
+      <div id="simMap" class="chart"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const COMPOUNDS = { SOFT: "#da291c", MEDIUM: "#ffd12e", HARD: "#f0f0ec", INTERMEDIATE: "#43b02a", WET: "#0067ad" };
+const FALLBACK = ["#00d2be", "#ff8700"];
+const SLIDERS = [
+  { key: "mu", label: "Tyre grip μ", step: 0.01, fmt: v => v.toFixed(2) },
+  { key: "cla", label: "Downforce ClA (m²)", step: 0.05, fmt: v => v.toFixed(2) },
+  { key: "cda", label: "Drag CdA (m²)", step: 0.01, fmt: v => v.toFixed(2) },
+  { key: "power_kw", label: "Power (kW)", step: 5, fmt: v => v.toFixed(0) },
+  { key: "mass", label: "Mass (kg)", step: 5, fmt: v => v.toFixed(0) },
+];
+
+const state = { drivers: [], tab: location.hash === "#sim" ? "sim" : "compare", drawn: {}, sim: null };
+
+// ---------- helpers ----------
+async function api(path, params) {
+  const r = await fetch(`/api/${path}?` + new URLSearchParams(params));
+  const body = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// Only the most recent request per channel may update the page (selects can change mid-download).
+const seq = {};
+async function latest(channel, promise) {
+  const my = seq[channel] = (seq[channel] || 0) + 1;
+  const result = await promise;
+  if (seq[channel] !== my) throw "stale";
+  return result;
+}
+
+function status(msg = "", kind = "") { $("status").textContent = msg; $("status").className = kind; }
+function failed(e) { if (e !== "stale") status(e.message || String(e), "error"); }
+
+const lapFmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, "0")}`;
+const sess = () => ({ year: $("year").value, event: $("event").value, kind: $("kind").value });
+const fill = (sel, items, value) => {
+  sel.replaceChildren(...items.map(([v, t]) => new Option(t, v)));
+  if (value != null && items.some(([v]) => v === value)) sel.value = value;
+};
+const rgba = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+};
+function colors(a, b) {
+  const c = abbr => state.drivers.find(d => d.abbr === abbr)?.color;
+  const ca = c(a) || FALLBACK[0];
+  let cb = c(b) || FALLBACK[1];
+  if (cb.toLowerCase() === ca.toLowerCase()) cb = "#ffffff"; // teammates share a team colour
+  return [ca, cb];
+}
+const kpi = (k, v, s = "", cls = "") =>
+  `<div class="kpi"><div class="k">${k}</div><div class="v ${cls}">${v}</div><div class="s">${s}</div></div>`;
+
+const AX = { gridcolor: "#20252f", zerolinecolor: "#2e3445", linecolor: "#2e3445", tickfont: { size: 11 } };
+const ax = (extra = {}) => ({ ...AX, ...extra });
+const layout = (extra = {}) => ({
+  paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+  font: { family: "Titillium Web, system-ui, sans-serif", color: "#c9cdd6", size: 12 },
+  margin: { l: 60, r: 16, t: 10, b: 44 },
+  hoverlabel: { bgcolor: "#1b1f2a", bordercolor: "#333a4a", font: { color: "#fff" } },
+  legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom" },
+  ...extra,
+});
+const CFG = { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+const plot = (id, traces, lay) => Plotly.react($(id), traces, lay, CFG);
+
+// ---------- season / event / session ----------
+async function loadEvents() {
+  try {
+    status("Loading calendar…", "busy");
+    const events = await latest("events", api("events", { year: $("year").value }));
+    const today = new Date().toISOString().slice(0, 10);
+    const past = events.filter(e => e.date <= today);
+    state.events = events;
+    fill($("event"), events.map(e => [e.name, e.date > today ? `${e.name} (upcoming)` : e.name]),
+         (past.at(-1) || events[0]).name);
+    syncKinds();
+    await loadSession();
+  } catch (e) { failed(e); }
+}
+
+function syncKinds() {
+  const ev = state.events?.find(e => e.name === $("event").value);
+  const sprint = ev && ev.format !== "conventional";
+  for (const o of $("kind").options) o.hidden = !sprint && (o.value === "S" || o.value === "SQ");
+  if ($("kind").selectedOptions[0].hidden) $("kind").value = "Q";
+}
+
+async function loadSession() {
+  try {
+    status("Loading session… first download of a session can take a minute.", "busy");
+    state.drivers = await latest("session", api("drivers", sess()));
+    const opts = state.drivers.map(d => [d.abbr, `${d.abbr} · ${d.name}`]);
+    const [prevA, prevB] = [$("a").value, $("b").value];
+    fill($("a"), opts, prevA); fill($("b"), opts, prevB);
+    if ($("a").value === $("b").value) $("b").selectedIndex = Math.min(1, opts.length - 1);
+    fill($("simDriver"), opts, $("simDriver").value || $("a").value);
+    state.drawn = {};
+    await render();
+  } catch (e) { failed(e); }
+}
+
+async function render() {
+  const key = JSON.stringify(sess());
+  if (state.tab === "compare") {
+    const k = `${key}|${$("a").value}|${$("b").value}`;
+    if (state.drawn.compare !== k) await loadCompare(k);
+  } else {
+    const k = `${key}|${$("simDriver").value}`;
+    if (state.drawn.sim !== k) await loadSim(k);
+  }
+  window.dispatchEvent(new Event("resize")); // charts drawn while hidden need a resize
+}
+
+// ---------- compare ----------
+async function loadCompare(key) {
+  const [A, B] = [$("a").value, $("b").value];
+  if (!A || !B) return;
+  if (A === B) return status("Pick two different drivers.", "error");
+  try {
+    status("Comparing fastest laps…", "busy");
+    const d = await latest("compare", api("compare", { ...sess(), a: A, b: B }));
+    const [ca, cb] = colors(A, B);
+    const gap = d.b.lapTime - d.a.lapTime;
+    $("cmpKpis").innerHTML =
+      kpi(`<span class="dot" style="background:${ca}"></span>${A} fastest lap`, lapFmt(d.a.lapTime)) +
+      kpi(`<span class="dot" style="background:${cb}"></span>${B} fastest lap`, lapFmt(d.b.lapTime)) +
+      kpi("Gap", `${gap >= 0 ? "+" : ""}${gap.toFixed(3)}s`, gap >= 0 ? `${B} slower than ${A}` : `${B} faster than ${A}`);
+    $("telSub").textContent = `Speed, gap (above zero = ${B} losing time to ${A}), throttle and brake on a shared distance axis. Numbers mark corners.`;
+    drawTelemetry(d, A, B, ca, cb);
+    drawMap(d.map, A, B, ca, cb);
+    drawStats(d, A, B);
+    $("race").hidden = !d.race;
+    if (d.race) { drawPace(d.race.pace, A, B, ca, cb); drawTyres(d.race); }
+    state.drawn.compare = key;
+    status();
+  } catch (e) { failed(e); }
+}
+
+function drawTelemetry(d, A, B, ca, cb) {
+  const traces = [];
+  for (const [k, drv, c] of [["a", A, ca], ["b", B, cb]]) {
+    const x = d[k].distance, g = { legendgroup: drv, line: { color: c, width: 1.6 } };
+    traces.push(
+      { x, y: d[k].speed, name: drv, ...g, hovertemplate: "%{y:.0f} km/h" },
+      { x, y: d[k].throttle, yaxis: "y3", showlegend: false, name: drv, ...g, hovertemplate: "%{y:.0f}%" },
+      { x, y: d[k].brake, yaxis: "y4", showlegend: false, name: drv, ...g, line: { ...g.line, shape: "hv" }, hovertemplate: "%{y}" },
+    );
+  }
+  traces.push({ x: d.a.distance, y: d.delta, yaxis: "y2", name: `Gap ${B}`, showlegend: false,
+                line: { color: cb, width: 1.6 }, fill: "tozeroy", fillcolor: rgba(cb, 0.12), hovertemplate: "%{y:+.3f}s" });
+  plot("tel", traces, layout({
+    hovermode: "x unified",
+    xaxis: ax({ anchor: "y4", title: { text: "Distance (m)" }, showspikes: true, spikemode: "across", spikethickness: 1, spikedash: "dot", spikecolor: "#666" }),
+    yaxis: ax({ domain: [0.5, 1], title: { text: "Speed (km/h)" } }),
+    yaxis2: ax({ domain: [0.3, 0.46], title: { text: "Gap (s)" }, zerolinecolor: ca, zerolinewidth: 1.5 }),
+    yaxis3: ax({ domain: [0.12, 0.26], title: { text: "Throttle %" }, range: [-5, 105] }),
+    yaxis4: ax({ domain: [0, 0.08], title: { text: "Brake" }, range: [-0.15, 1.15], tickvals: [0, 1], ticktext: ["off", "on"] }),
+    shapes: d.corners.map(c => ({ type: "line", x0: c.d, x1: c.d, yref: "paper", y0: 0, y1: 1, line: { color: "#3a4152", width: 1, dash: "dot" }, layer: "below" })),
+    annotations: d.corners.map(c => ({ x: c.d, y: 0, yref: "y domain", text: c.n, showarrow: false, yanchor: "bottom", font: { size: 10, color: "#8a91a3" } })),
+  }));
+}
+
+function drawMap(m, A, B, ca, cb) {
+  // One trace per driver; a point belongs to a driver's trace if it or its predecessor is theirs, so runs join up.
+  const mine = k => (v, i) => (m.owner[i] === k || m.owner[i - 1] === k ? v : null);
+  const traces = [0, 1].map(k => ({
+    x: m.x.map(mine(k)), y: m.y.map(mine(k)), mode: "lines", hoverinfo: "skip",
+    line: { color: [ca, cb][k], width: 7 }, name: `${[A, B][k]} · ${m.won[k]} sectors`,
+  }));
+  plot("map", traces, layout({
+    margin: { l: 0, r: 0, t: 0, b: 0 }, legend: { orientation: "h", x: 0, y: 0, yanchor: "top" },
+    xaxis: { visible: false }, yaxis: { visible: false, scaleanchor: "x" }, dragmode: "pan",
+  }));
+}
+
+function drawStats(d, A, B) {
+  const higherIsBetter = new Set(["Top speed (km/h)", "Avg speed (km/h)", "Full throttle %"]);
+  const rows = Object.keys(d.a.stats).map(k => {
+    const [va, vb] = [d.a.stats[k], d.b.stats[k]];
+    const best = higherIsBetter.has(k) && va !== vb ? (va > vb ? "a" : "b") : null;
+    return `<tr><td>${k}</td><td class="${best === "a" ? "best" : ""}">${va}</td><td class="${best === "b" ? "best" : ""}">${vb}</td></tr>`;
+  });
+  $("stats").innerHTML = `<thead><tr><th></th><th>${A}</th><th>${B}</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+}
+
+function drawPace(pace, A, B, ca, cb) {
+  // Break the line where laps were filtered out (pit stops, safety car) instead of bridging the gap.
+  const gapped = ({ lap, time }) => {
+    const x = [], y = [];
+    lap.forEach((l, i) => { if (i && l - lap[i - 1] > 1) { x.push(null); y.push(null); } x.push(l); y.push(time[i]); });
+    return { x, y };
+  };
+  plot("pace", [[A, ca], [B, cb]].map(([drv, c]) => ({
+    ...gapped(pace[drv]), name: drv, mode: "lines+markers",
+    line: { color: c, width: 1.5 }, marker: { size: 5 }, customdata: gapped(pace[drv]).y.map(t => t == null ? "" : lapFmt(t)),
+    hovertemplate: `${drv} lap %{x}: %{customdata}<extra></extra>`,
+  })), layout({ xaxis: ax({ title: { text: "Lap" } }), yaxis: ax({ title: { text: "Lap time (s)" } }), hovermode: "closest" }));
+}
+
+function drawTyres(race) {
+  const traces = Object.entries(COMPOUNDS).concat([["UNKNOWN", "#666"]]).map(([comp, color]) => {
+    const st = race.stints.filter(s => (COMPOUNDS[s.compound] ? s.compound : "UNKNOWN") === comp);
+    return {
+      type: "bar", orientation: "h", name: comp[0] + comp.slice(1).toLowerCase(), showlegend: st.length > 0,
+      y: st.map(s => s.driver), x: st.map(s => s.laps), base: st.map(s => s.start - 1),
+      customdata: st.map(s => [s.start, s.start + s.laps - 1]),
+      marker: { color, line: { color: "#0b0d12", width: 2 } },
+      hovertemplate: `%{y} · ${comp.toLowerCase()} · laps %{customdata[0]}–%{customdata[1]}<extra></extra>`,
+    };
+  });
+  $("tyres").style.height = `${race.order.length * 24 + 90}px`;
+  plot("tyres", traces, layout({
+    barmode: "overlay", bargap: 0.25, hovermode: "closest",
+    xaxis: ax({ title: { text: "Lap" } }),
+    yaxis: ax({ categoryorder: "array", categoryarray: race.order, autorange: "reversed", gridcolor: "rgba(0,0,0,0)" }),
+  }));
+}
+
+// ---------- simulator ----------
+async function loadSim(key, car) {
+  const drv = $("simDriver").value;
+  if (!drv) return;
+  try {
+    if (!car) status("Fitting the model to the fastest lap…", "busy");
+    const d = await latest("sim", api("sim", { ...sess(), driver: drv, ...car }));
+    if (!car) buildSliders(d);
+    drawSim(d, drv);
+    state.drawn.sim = key;
+    status();
+  } catch (e) { failed(e); }
+}
+
+function buildSliders(d) {
+  state.sim = d.fittedCar;
+  $("sliders").innerHTML = SLIDERS.map(s => {
+    const v = d.fittedCar[s.key], [lo, hi] = d.ranges[s.key];
+    const min = s.key === "mass" ? 700 : Math.max(lo, v * 0.5), max = s.key === "mass" ? 950 : Math.min(hi, v * 1.5);
+    return `<div class="slider"><div class="top"><span>${s.label}</span><span id="v_${s.key}"></span></div>
+      <input type="range" id="s_${s.key}" aria-label="${s.label}" min="${min}" max="${max}" step="${s.step}" value="${v}"></div>`;
+  }).join("");
+  SLIDERS.forEach(s => $(`s_${s.key}`).addEventListener("input", onSlide));
+  showSliderValues();
+}
+
+function showSliderValues() {
+  for (const s of SLIDERS) {
+    const v = +$(`s_${s.key}`).value, base = state.sim[s.key], pct = (v / base - 1) * 100;
+    $(`v_${s.key}`).innerHTML = `${s.fmt(v)} <small>${Math.abs(pct) < 0.5 ? "fitted" : `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`}</small>`;
+  }
+}
+
+let slideTimer;
+function onSlide() {
+  showSliderValues();
+  clearTimeout(slideTimer);
+  slideTimer = setTimeout(() => {
+    const car = Object.fromEntries(SLIDERS.map(s => [s.key, $(`s_${s.key}`).value]));
+    loadSim(state.drawn.sim, car);
+  }, 120);
+}
+
+function drawSim(d, drv) {
+  const [c] = colors(drv, null);
+  const changed = SLIDERS.some(s => Math.abs(d.usedCar[s.key] - d.fittedCar[s.key]) > 1e-9);
+  const delta = d.carTime - d.fittedTime;
+  $("simKpis").innerHTML =
+    kpi(`${drv} real lap`, lapFmt(d.realTime)) +
+    kpi("Fitted model", lapFmt(d.fittedTime), `speed error ±${d.rmse} km/h RMS`) +
+    kpi("Your setup", lapFmt(d.carTime), changed ? "vs fitted model" : "move a slider") +
+    kpi("Lap-time effect", changed ? `${delta >= 0 ? "+" : ""}${delta.toFixed(3)}s` : "—", "",
+        changed ? (delta < 0 ? "good" : "bad") : "");
+
+  const traces = [
+    { x: d.s, y: d.real, name: `${drv} real`, line: { color: c, width: 1.6 }, hovertemplate: "%{y:.0f} km/h" },
+    { x: d.s, y: d.fitted, name: "Fitted model", line: { color: "#8a91a3", width: 1.4, dash: "dot" }, hovertemplate: "%{y:.0f} km/h" },
+  ];
+  if (changed) traces.push({ x: d.s, y: d.car, name: "Your setup", line: { color: "#e10600", width: 1.8 }, hovertemplate: "%{y:.0f} km/h" });
+  plot("simSpeed", traces, layout({
+    hovermode: "x unified",
+    xaxis: ax({ title: { text: "Distance (m)" } }), yaxis: ax({ title: { text: "Speed (km/h)" } }),
+  }));
+
+  const diff = d.real.map((v, i) => v - d.fitted[i]);
+  plot("simMap", [{
+    x: d.x, y: d.y, mode: "markers", customdata: diff.map(v => v.toFixed(0)), text: d.s,
+    hovertemplate: "%{text} m: %{customdata} km/h<extra></extra>",
+    marker: { size: 6, color: diff, cmin: -40, cmax: 40, cmid: 0,
+              colorscale: [[0, "#ff4d4d"], [0.5, "#2b3040"], [1, "#3fa7ff"]],
+              colorbar: { title: { text: "km/h" }, thickness: 12, outlinewidth: 0 } },
+  }], layout({
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+    xaxis: { visible: false }, yaxis: { visible: false, scaleanchor: "x" }, dragmode: "pan",
+  }));
+}
+
+// ---------- wiring ----------
+function showTab(tab) {
+  state.tab = tab;
+  history.replaceState(null, "", tab === "sim" ? "#sim" : "#");
+  for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === tab);
+  $("compare").hidden = tab !== "compare";
+  $("sim").hidden = tab !== "sim";
+  if (state.drivers.length) render().catch(failed);
+}
+
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("year").addEventListener("change", loadEvents);
+$("event").addEventListener("change", () => { syncKinds(); loadSession(); });
+$("kind").addEventListener("change", loadSession);
+["a", "b", "simDriver"].forEach(id => $(id).addEventListener("change", () => render().catch(failed)));
+$("reset").addEventListener("click", () => { state.drawn.sim = null; render().catch(failed); });
+
+const thisYear = new Date().getFullYear();
+fill($("year"), Array.from({ length: thisYear - 2017 }, (_, i) => [String(thisYear - i), String(thisYear - i)]));
+showTab(state.tab);
+loadEvents();
+</script>
+</body>
+</html>
