@@ -53,5 +53,7 @@ The analysis and simulator logic are tested offline with synthetic telemetry and
 
 Python · FastF1 · pandas · NumPy · SciPy · Starlette · Plotly · pytest
 
+Still work in progress. Will be adding new features soon.
+
 ---
 Unofficial project, not associated with Formula 1 companies. F1 data © Formula One World Championship Limited.
