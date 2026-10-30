@@ -9,6 +9,7 @@ import fastf1
 import fastf1.plotting
 import numpy as np
 import pandas as pd
+from fastf1.exceptions import DataNotLoadedError
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
@@ -20,7 +21,7 @@ from analysis import minisector_winners, sector_of, stints, time_delta
 
 HERE = Path(__file__).parent
 (HERE / "cache").mkdir(exist_ok=True)
-fastf1.Cache.enable_cache(str(HERE / "cache"))
+fastf1.Cache.configure(cache_dir=str(HERE / "cache"))
 fastf1.set_log_level("WARNING")
 
 KINDS = ("Q", "R", "S", "SQ", "FP1", "FP2", "FP3")
@@ -99,6 +100,10 @@ def load(year, event, kind):
     with _load_lock:
         try:
             return _load(year, event, kind)
+        except DataNotLoadedError:
+            # Since Oct 2026 F1 only serves timing data to logged-in F1 TV Access subscribers
+            raise HTTPException(503, f"No timing data for {event} {kind} {year}. F1 now requires an F1 TV Access "
+                                     "subscription: log in when the server prompts you (see the README).")
         except Exception as e:  # FastF1 raises a zoo of types for "not available"
             raise HTTPException(502, f"Couldn't load {event} {kind} {year}: {e}")
 

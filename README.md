@@ -12,7 +12,7 @@ Pick a season, Grand Prix, session and two drivers to see:
 
 The **Lap simulator** tab fits a point-mass car model to a driver's fastest lap, then lets you change grip, downforce, drag, power and mass to see what each is worth in lap time.
 
-<!-- Add a screenshot: docs/screenshot.png -->
+> **Data access:** since October 2026, F1 only serves timing and telemetry data to logged-in accounts with an [F1 TV Access](https://f1tv.formula1.com) subscription or higher. This applies to old seasons too. Without one, the app starts and lists the calendar, but can't load a session. Run `python server.py` in a terminal and enter your F1 account details when prompted. There is no public demo for this reason.
 
 ## Run locally
 
